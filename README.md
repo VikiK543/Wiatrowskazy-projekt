@@ -2,7 +2,7 @@
 
 Projekt przedstawia analizę danych meteorologicznych zawartych w pliku `dane_2H.xlsx` z wykorzystaniem języka R oraz środowiska RMarkdown.
 
-# Pliki w repozytorium:
+# Pliki:
 - `Wiatrowskazy.Rmd` – główny plik z kodem analizy
 - `dane_2H.xlsx` – zbiór danych z pomiarami meteorologicznymi (np. wiatr, temperatura, itp.)
 
