@@ -1,0 +1,480 @@
+---
+title: "Projekt R2024"
+author: "Kościelecka Anna 411220, Krettek Viktoria 411562"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  prettydoc::html_pretty:
+    theme: "tactile"
+    css: "custom1.css"
+    toc: yes
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, error = FALSE)
+```
+
+# Wprowadzenie
+
+## Opis instalacji
+
+W naszym projekcie zajmujemy się zestawem danych H. Oto kluczowe parametry:
+
+-   Anemometry:\
+    80.62m CH1 -- zapasowy, nie używamy do profilu pionowego\
+    80.62m CH4 -- górny do profilu pionowego, do histogramu\
+    60.53m CH5 -- do umieszczenia na wykresie\
+    40.73m CH6 -- dolny do profilu pionowego\
+-   Wiatrowskazy, vane'y:\
+    78.30m CH7 - górny wiatrowskaz, do wyznaczania sektorów w funkcji\
+    38.60m CH8 -- dolny wiatrowskaz\
+-   Termometr CH11
+
+## Pakiety
+
+```{css}
+.toc{}
+a {color: #5c260f;}
+```
+
+```{r}
+library(readxl)
+library(plotly)
+library(fitdistrplus)
+library(ggplot2)
+library(dplyr)
+```
+
+# Wykresy prędkości wiatru w zależności od czasu
+
+### Wykresy prędkości wiatru danych wejściowych
+
+```{r}
+dane_2H <- read_excel("dane_2H.xlsx")
+wykres = ggplot(dane_2H)+
+  geom_line(aes(x=`Date & Time Stamp`, y=CH1Avg, color="CH1"))+
+  geom_line(aes(x=`Date & Time Stamp`, y=CH4Avg, color="CH4"))+
+  geom_line(aes(x=`Date & Time Stamp`, y=CH5Avg, color="CH5"))+
+  geom_line(aes(x=`Date & Time Stamp`, y=CH6Avg, color="CH6"))+
+    labs(title = "Wykres prędkości od czasu", 
+       x = "Data i czas", 
+       y = "Prędkość")+
+  scale_color_manual(name="Anemometry", values=c("CH1"="brown", "CH4"="darkorange","CH5"="steelblue","CH6"="forestgreen")) +
+  theme(plot.title = element_text(face = "italic", size = (20), color= "DarkSlateGray"), 
+        axis.title = element_text(face = "bold", color= "DarkSlateGray"),
+        axis.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.title = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        panel.background = element_rect(colour = "GhostWhite", fill = "GhostWhite"))
+
+wykres = ggplotly(wykres)
+wykres
+
+```
+
+Wykres przedstawia zależności prędkości od czasu z uwzględnieniem przymarznięć. Kluczowe przymarznięcia występowały dla anenometrów:
+
+-   CH4 w dniach od 2011-01-20 do 2011-01-22,
+-   CH5 w dniach od 2011-01-20 do 2011-01-22,
+-   CH6 w dniach od 2011-01-20 do 2011-01-23
+
+### Funkcja modyfikacji danych
+
+```{r}
+przygotowanie_danych = function(dane){
+  dane %>%
+    mutate(
+      CH4nowe = case_when(
+    !(CH4Avg < 0.5 & CH4SD == 0 & CH11Avg < 1) ~ CH4Avg),
+      CH5nowe = case_when(
+    !(CH5Avg < 0.5 & CH5SD == 0 & CH11Avg < 1) ~ CH5Avg),
+      CH6nowe = case_when(
+    !(CH6Avg < 0.5 & CH6SD == 0 & CH11Avg < 1) ~ CH6Avg)) %>%
+    mutate(
+    Sektor = case_when(
+      (CH7Avg <45 | CH7Avg >= 315) ~ "N",
+      (CH7Avg >=45 & CH7Avg < 135) ~ "E",
+      (CH7Avg >= 135 & CH7Avg <225) ~ "S",
+      (CH7Avg >= 225 & CH7Avg < 315) ~ "W")) %>%
+   dplyr:: select(
+      "Date & Time Stamp",
+      CH1Avg,
+      CH4nowe,
+      CH5nowe,
+      CH6nowe,
+      CH7Avg,
+      CH8Avg,
+      Sektor
+    )
+}
+dane=przygotowanie_danych(dane_2H)
+
+```
+
+Funkcja umożliwiła usunięcię przymarznięć, czyli wadliwych danych, które przeszkadzałyby w poźniejszej analizie. Od tego momentu będziemy pracować na zmodyfikowanych danych.
+
+### Wykres predkości wiatru w zależności od czasu ze zmodyfikowanymi danymi
+
+```{r}
+wykres_nowy = ggplot(dane)+
+  geom_line(aes(x=`Date & Time Stamp`, y=CH1Avg, color="CH1"))+
+  geom_line(aes(x=`Date & Time Stamp`, y=CH4nowe, color="CH4"))+
+  geom_line(aes(x=`Date & Time Stamp`, y=CH5nowe, color="CH5"))+
+  geom_line(aes(x=`Date & Time Stamp`, y=CH6nowe, color="CH6"))+
+  labs(title = "Wykres prędkości od czasu", 
+       x = "Data i czas", 
+       y = "Prędkość") +
+  scale_color_manual(name="Anemometry", values=c("CH1"="brown", "CH4"="darkorange","CH5"="steelblue","CH6"="forestgreen")) +
+  theme(plot.title = element_text(face = "italic", size = (20), color= "DarkSlateGray"), 
+        axis.title = element_text(face = "bold", color= "DarkSlateGray"),
+        axis.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.title = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        panel.background = element_rect(colour = "GhostWhite", fill = "GhostWhite"))
+
+wykres_nowy = ggplotly(wykres_nowy)
+wykres_nowy
+
+```
+
+Wykres przedstawia zależności prędkości od czasu bez uwzględnienia przymarznięć, czyli z poprawionymi danymi.
+
+# Profil pionowy wiatru
+
+### Wyliczenie wspólczynnika w - wzór Hellmana-Suttona
+
+$$
+\begin{array}{r}
+V_1 \cdot \left(\frac{h_2}{h_1}\right)^w = V_2 \\
+\left(\frac{h_2}{h_1}\right)^w = \frac{V_2}{V_1} \\
+\ln\left(\left(\frac{h_2}{h_1}\right)^w\right) = \ln\left(\frac{V_2}{V_1}\right) \\
+w \cdot \ln \left(\frac{h_2}{h_1}\right) = \ln \left(\frac{V_2}{V_1}\right) \\
+w = \frac{\ln \left(\frac{V_2}{V_1}\right)}{\ln \left(\frac{h_2}{h_1} \right)} \\
+w = \frac{\ln(V_2) - \ln(V_1)}{\ln(h_2) - \ln(h_1)}
+\end{array}
+$$
+
+### Wyliczenie współczynnika z0 - prawo logarytmiczne
+
+$$
+\begin{array}{r}
+V_2 = V_1 \cdot \left(\frac{\ln \left (\frac{h_2}{z_0}\right)}{\ln \left(\frac{h_1}{z_0} \right )} \right)\\
+\frac{V_2}{V_1} =  \frac{\ln \left(\frac{h_2}{z_0}\right)}{\ln \left(\frac{h_1}{z_0}\right)}\\
+\frac{V_2}{V_1} \cdot \ln \left(\frac{h_1}{z_0}\right) = \ln \left(\frac{h_2}{z_0}\right) \\
+\frac{V_2}{V_1} \cdot (\ln(h_1) - \ln(z_0)) =  \ln(h_2) - \ln(z_0)\\
+\frac{V_2}{V_1} \cdot \ln (h_1) - \ln (h_2) = \ln (z_0)\left( \frac{V_2}{V_1} - 1 \right)\\
+\ln(z_0) = \frac{\frac{V_2}{V_1} \cdot \ln(h_1) - \ln(h_2)}{\frac{V_2}{V_1} - 1} \\
+z_0 = \exp \left( \frac{\frac{V_2}{V_1} \cdot \ln(h_1) - \ln(h_2)}{\frac{V_2}{V_1} - 1}\right) \\
+z_0 = \left(\frac{h_1^{\frac{V_2}{V_1}}}{h_2}\right)^{\frac{1}{\frac{V_2}{V_1 } -1}}
+\end{array}
+$$\
+
+### Wykres profilu pionowego wiatru
+
+```{r}
+V4=mean(dane$CH4nowe, na.rm = TRUE)
+V5=mean(dane$CH5nowe, na.rm = TRUE)
+V6=mean(dane$CH6nowe, na.rm = TRUE)
+
+h4 = 80.62
+h5 = 60.53 
+h6 = 40.73
+
+w = (log(V4)-log(V6))/(log(h4)-log(h6)) 
+
+Vhell = function(h){
+  4.79721*(h/40.73)^0.2837282
+}
+
+wysokosc = seq(10,130, by = 1)
+predkosc1 = Vhell(wysokosc)
+ramka1 = data.frame(Wysokość = wysokosc, predkosc1 = predkosc1)
+
+ramka_pomiar=data.frame(wys_pom = c(h4, h5, h6), pred_pom = c(V4, V5, V6))
+
+z0 = ((h6^(V4/V6))/h4)^(1/(V4/V6 - 1))
+
+Vlog = function(h){
+  4.79721*(log(h/1.670029)/log(40.73/1.670029))
+}
+
+predkosc2 = Vlog(wysokosc)
+ramka2 = data.frame(wysokosc = wysokosc, predkosc2 = predkosc2)
+
+ggplot() + 
+  geom_line(data = ramka1, aes(x=wysokosc,y=predkosc1, color = "vhell"), linewidth=1) +
+  geom_line(data = ramka2, aes(x=wysokosc,y=predkosc2, color = "vlog"), linewidth=1) +
+  geom_point(data = ramka_pomiar,aes(x=wys_pom,y=pred_pom, color = "dane z pomiaru"),size=5,pch="x") +
+  labs(title="Wykres prędkości w zależności od wysokości", x = "Wysokość", y = "Prędkość ") +
+  scale_color_manual(name = "Legenda", values = c("vhell" = "steelblue","vlog" = "brown","dane z pomiaru"="blue")) +theme(plot.title = element_text(face = "italic", size = (20), color= "DarkSlateGray"), 
+        axis.title = element_text(face = "bold", color= "DarkSlateGray"),
+        axis.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.title = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        panel.background = element_rect(colour = "GhostWhite", fill = "GhostWhite"))
+
+
+```
+
+\
+Wykres prędkości wyliczonej na podstawie wzoru Hellmana-Sutona oraz prawa logarytmicznego. Punkty zaznaczone na wykresie są wyliczone na podstawie pomiarów oraz mają wartości:
+
+-   V4 = 5.82267 m/s, H4 = 80.62 m\
+-   V5 = 5.328938 m/s, H5 = 60.53 m\
+-   V6 = 4.79721 m/s, H6 = 40.73 m
+
+# Zgodność wskazań wiatowskazów
+
+### Wykresy wskazań wiatrowskazów
+
+```{r}
+
+wykres = ggplot(dane)+
+  geom_line(aes(x=`Date & Time Stamp`, y=CH7Avg, color="VaneCH7"))+
+  geom_line(aes(x=`Date & Time Stamp`, y=CH8Avg, color="VaneCH8"))+
+  scale_color_manual(name="wiatrowskazy", values=c("VaneCH7"="steelblue", "VaneCH8"="brown")) +
+   labs(title="Wykres wiatrowskazów", x = "Data i czas", y = "Prędkość średnia") +
+   theme(plot.title = element_text(face = "italic", size = (20), color= "DarkSlateGray"), 
+        axis.title = element_text(face = "bold", color= "DarkSlateGray"),
+        axis.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.title = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        panel.background = element_rect(colour = "GhostWhite", fill = "GhostWhite"))
+wykres = ggplotly(wykres)
+wykres
+```
+
+### Różnica wskazań wiatrowskazów
+
+```{r}
+bezwgl = dane %>%
+  mutate(AbsRoznica = abs(CH7Avg - CH8Avg))
+
+wykres1 = ggplot(bezwgl) +
+  geom_line(aes(x=`Date & Time Stamp`, y = AbsRoznica, color = "Różnica")) +
+  scale_color_manual(name="Wiatrowskazy", values=c("Różnica"="steelblue")) +
+  labs(title="Wykres różnic wartości CH7Avg i CH8Avg", x = "Data i czas", y = "abs(CH7Avg - CH8Avg)") +
+   theme(plot.title = element_text(face = "italic", size = (20), color= "DarkSlateGray"), 
+        axis.title = element_text(face = "bold", color= "DarkSlateGray"),
+        axis.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.title = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        panel.background = element_rect(colour = "GhostWhite", fill = "GhostWhite"))
+wykres1 = ggplotly(wykres1)
+wykres1
+```
+
+### Różnica wskazań wiatrowskazów po usunięciu ekstremów
+
+```{r}
+roznice = dane %>%
+  mutate(roznice_katow = case_when(
+    CH6nowe < 3 ~ NA_real_,
+    TRUE ~ {
+      roznica=pmin(abs(CH7Avg - CH8Avg), 360 - abs(CH7Avg - CH8Avg))
+      ifelse(roznica > 30, NA_real_, roznica)
+    }
+  ))
+
+wykres2 = ggplot(roznice) +
+  geom_line(aes(x = `Date & Time Stamp`, y = roznice_katow, color = "Różnica")) +
+  scale_color_manual(name = "Wiatrowskazy", values = c("Różnica" = "steelblue")) +
+  labs(title = "Różnica wskazań wiatrowskazów po usunięciu wyników ekstremalnych", 
+       x = "Data i czas", 
+       y = "Różnica") +
+   theme(plot.title = element_text(face = "italic", size = (20), color= "DarkSlateGray"), 
+        axis.title = element_text(face = "bold", color= "DarkSlateGray"),
+        axis.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.title = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        panel.background = element_rect(colour = "GhostWhite", fill = "GhostWhite"))
+wykres2 = ggplotly(wykres2)
+wykres2
+```
+
+\
+Wykres został ograniczony do wartości różnic od 0 do 30.
+
+### Wykresy wskazań wiatrowskazów po uwzględnieniu poprawki po połowie
+
+```{r}
+nowe = roznice %>%
+  mutate(
+    CH7nowe = CH7Avg - ifelse(is.na(roznice_katow), 0, roznice_katow / 2),
+    CH8nowe = CH8Avg + ifelse(is.na(roznice_katow), 0, roznice_katow / 2)
+  )
+
+wykres3 = ggplot(nowe) +
+  geom_line(aes(x=`Date & Time Stamp`, y = CH7nowe, color = "VaneCH7-10")) +
+  geom_line(aes(x=`Date & Time Stamp`, y = CH8nowe, color="VaneCH8+10")) +
+  labs(title = "Wykresy wskazań z poprawkami", 
+       x = "Data i czas", 
+       y = "CH7 - 10, CH8 + 10") +
+  scale_color_manual(name="Wiatrowskazy", values=c("VaneCH7-10"="steelblue", "VaneCH8+10"="brown" )) +
+   theme(plot.title = element_text(face = "italic", size = (20), color= "DarkSlateGray"), 
+        axis.title = element_text(face = "bold", color= "DarkSlateGray"),
+        axis.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.title = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        panel.background = element_rect(colour = "GhostWhite", fill = "GhostWhite"))
+wykres3 = ggplotly(wykres3)
+wykres3
+```
+
+# Histogramy dla najwyższego anemometru
+
+### Histogram dla CH4 z dopasowaną gęstością
+
+```{r}
+
+przygotowane_dane = dane %>%
+ dplyr:: filter(!is.na(CH4nowe), !is.infinite(CH4nowe), !is.nan(CH4nowe))
+
+weibull = fitdist(przygotowane_dane$CH4nowe, "weibull")
+
+ksztalt = weibull$estimate["shape"]
+skala = weibull$estimate["scale"]
+n_obserwacji = nrow(przygotowane_dane)
+bin_width = 0.5
+
+ggplot(przygotowane_dane, aes(x = CH4nowe)) +
+  geom_histogram(aes(y = after_stat(count), fill= "Histogram"), 
+                 binwidth = bin_width, fill = "steelblue", color = "steelblue", alpha = 0.3)+
+  geom_function(fun = function(x) (dweibull(x, shape = ksztalt, scale = skala)* n_obserwacji *bin_width ),
+                linewidth = 1, aes(color= "Dopasowany rozkład Weibulla") )+
+  scale_fill_manual(values = c("Histogram"="steelblue"))+
+  scale_color_manual(values = c("Dopasowany rozkład Weibulla"="brown"))+
+  labs(title = "Histogram dla CH4 z dopasowaną gęstością",
+       x = "CH4",
+       y = "Liczba wystąpień",
+       fill="Legenda",
+       color="Legenda")+
+  scale_y_continuous(sec.axis = sec_axis(~./(4464), name = "Gęstość rozkładu",labels = scales::percent), name = "Liczba wystąpień") +
+  theme(plot.title = element_text(face = "italic", size = (20), color= "DarkSlateGray"), 
+        axis.title = element_text(face = "bold", color= "DarkSlateGray"),
+        axis.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.title = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        panel.background = element_rect(colour = "GhostWhite", fill = "GhostWhite"))
+
+```
+
+\
+Histogram przedstawia liczbę prędkości wiatru dla anemometru CH4 wraz z dopasowaną gęstością rozkładu, aby dopasować gęstość wykorzystaliśmy estymację parametrów rozkładu Weibulla.
+
+### Kalkulator internetowy
+
+```{r}
+przygotowane_dane = dane %>%
+ dplyr:: filter(!is.na(CH4nowe), !is.infinite(CH4nowe), !is.nan(CH4nowe))
+
+weibull4 = fitdist(przygotowane_dane$CH4nowe, "weibull")
+ksztalt4 = weibull4$estimate["shape"]
+skala4 = weibull4$estimate["scale"] 
+
+Turbina = c("Enercon E-48", "Gamesa G90", "Vensys 77")
+prad = c(1473093  , 4395492,  3289755 )
+ramka = data.frame(Turbina = Turbina, Prąd = prad)
+ramka 
+
+```
+
+\
+Ramka przedstawia model turbiny oraz roczną produkcję prądu z wykorzystaniem wyliczonych dla CH4 parametrów rozkładu Weibulla.\
+
+### Procentowy udział wiatru
+
+```{r}
+procentowy_udzial <- dane %>%
+  group_by(Sektor) %>%
+  summarise(liczba=n()) %>%
+  mutate(Procent= liczba/ sum(liczba) * 100)
+
+procentowy_udzial
+```
+
+\
+Ramka przedstawia nazwę sektora, liczbę wystąpień oraz procentowy udział wiatru.\
+
+# Histogramy dla CH4 z uwzględnieniem podziału na sektory
+
+```{r}
+ggplot( dane, aes(x = CH4nowe)) +
+  geom_histogram(aes(y = after_stat(count)),
+                 binwidth = bin_width, fill = "steelblue", color = "steelblue", alpha = 0.3) +
+  labs(title = "Histogramy dla CH4 z podziałem na sektory",
+       x = "CH4",
+       y = "Liczba wystąpień")+
+  theme(plot.title = element_text(face = "italic", size = (20), color= "DarkSlateGray"), 
+        axis.title = element_text(face = "bold", color= "DarkSlateGray"),
+        axis.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.title = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        panel.background = element_rect(colour = "GhostWhite", fill = "GhostWhite"))+
+  facet_grid(~ Sektor)
+```
+
+\
+Histogramy pokazują różnice w rozkładzie zmiennej CH4 w różnych sektorach.
+
+-   Sektor S ma najbardziej skupione dane z pośród wszystkich sektorów, najwieksze skupienie wokół wartości 6.\
+-   Sektor W ma szerszy zakres wartości w porównaniu do sektora S, a jego dane są bardziej rozproszone, największe skupienie wokół wartości 6.\
+-   Sektor N nie wykazuje dużych wartości dla CH4, największe skupienie jest wokół wartości 3.\
+-   Sektor E również nie wykazuje dużych wartości dla CH4, liczba jego wystąpień jest najmniejsza, największe skupienie wokół wartości 6.\
+
+### Wykres ramka-wąsy dla CH4 z uwzględnieniem podziału na sektory
+
+```{r}
+dane %>%
+  ggplot(aes(x = Sektor, y = CH4nowe, color = Sektor, fill = Sektor)) +
+  geom_boxplot(alpha = 0.5) +
+  labs(title = "Wykres ramka-wąsy dla CH4 z podziałem na sektory",
+       x = "Sektor",
+       y = "Wartości CH4")+
+  scale_fill_manual(name="Sektor", values=c("N"="brown", "S"="darkorange","W"="steelblue","E"="forestgreen")) +
+  scale_color_manual(name="Sektor", values=c("N"="brown", "S"="darkorange","W"="steelblue","E"="forestgreen")) +
+  theme(plot.title = element_text(face = "italic", size = (20), color= "DarkSlateGray"), 
+        axis.title = element_text(face = "bold", color= "DarkSlateGray"),
+        axis.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.title = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        panel.background = element_rect(colour = "GhostWhite", fill = "GhostWhite"))
+
+```
+
+\
+
+### Średnia prędkość wiatru
+
+```{r}
+srednie <- dane %>%
+  group_by(Sektor) %>%
+  summarise(Średnia_prędkość= mean(CH4nowe, na.rm=TRUE))
+
+srednie
+```
+
+\
+Ramka przedstawia sektor oraz średnią predkość wyliczoną z uwzględnieniem podziału na sektory.\
+
+### Wykres liniowy prędkości wiatru
+
+```{r}
+wykres_liniowy = ggplot(dane)+
+  geom_line(aes(x=`Date & Time Stamp`, y=CH4nowe , color=Sektor, group=1))+
+  labs(title="Wykres prędkości wiatru", x= "Data i Czas", y ="CH4", color= "Sektor")+
+  scale_color_manual(values = c("N"="brown", "S"="darkorange","W"="steelblue","E"="forestgreen"))+
+theme(plot.title = element_text(face = "italic", size = (20), color= "DarkSlateGray"), 
+        axis.title = element_text(face = "bold", color= "DarkSlateGray"),
+        axis.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.title = element_text(face = "bold", colour = "DarkSlateGray"),
+        legend.text = element_text(face = "bold", colour = "DarkSlateGray"),
+        panel.background = element_rect(colour = "GhostWhite", fill = "GhostWhite"))
+ wykres_liniowy
+```
+
+\
+Wykres przedstawia prędkość wiatru w odnienieniu do daty. Kolor wykresu odpowiada kierunkowi wiatru, który wiał w danej chwili.\
+Dziękujemy za uwagę.
+
+
